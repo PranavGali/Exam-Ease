@@ -1,0 +1,453 @@
+.exam-details-container {
+  padding: 1rem 0;
+}
+
+.exam-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.exam-status {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.exam-status.available {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.exam-status.passed {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.exam-status.failed {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.exam-info-card {
+  background-color: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.exam-description {
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.exam-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+  padding: 1.5rem 0;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-label {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+}
+
+.meta-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--dark-color);
+}
+
+.exam-result-summary {
+  margin-top: 2rem;
+}
+
+.exam-result-summary h3 {
+  margin-bottom: 1rem;
+  color: var(--dark-color);
+}
+
+.result-details {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.result-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-label {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.3rem;
+}
+
+.result-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.exam-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.exam-content-preview {
+  background-color: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.exam-content-preview h2 {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.question-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.question-type {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.question-type h3 {
+  margin-bottom: 0.5rem;
+  color: var(--dark-color);
+}
+
+.question-type p {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.exam-instructions {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+}<boltAction type="file" filePath="src/components/exams/TakeExam.jsx">
+import React, { useState, useContext, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../contexts/AuthContext';
+import { ExamContext } from '../../contexts/ExamContext';
+import './TakeExam.css';
+
+const TakeExam = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { currentUser } = useContext(AuthContext);
+  const { getExam, submitExamResult, getUserResults } = useContext(ExamContext);
+  
+  const [exam, setExam] = useState(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [examStarted, setExamStarted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  const timerRef = useRef(null);
+  
+  useEffect(() => {
+    const examData = getExam(id);
+    if (examData) {
+      // Check if user has already taken this exam
+      const results = getUserResults(currentUser.id);
+      const alreadyTaken = results.some(r => r.examId === id);
+      
+      if (alreadyTaken) {
+        setError('You have already taken this exam');
+        setTimeout(() => {
+          navigate(`/exams/${id}`);
+        }, 3000);
+        return;
+      }
+      
+      setExam(examData);
+      setTimeLeft(examData.duration * 60); // Convert minutes to seconds
+      
+      // Initialize answers object
+      const initialAnswers = {};
+      examData.questions.forEach(question => {
+        initialAnswers[question.id] = question.type === 'mcq' ? '' : '';
+      });
+      setAnswers(initialAnswers);
+      
+      setLoading(false);
+    } else {
+      navigate('/404');
+    }
+  }, [id, getExam, navigate, currentUser, getUserResults]);
+  
+  useEffect(() => {
+    if (examStarted && timeLeft > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            handleSubmit();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [examStarted, timeLeft]);
+  
+  const startExam = () => {
+    setExamStarted(true);
+  };
+  
+  const handleAnswerChange = (questionId, value) => {
+    setAnswers({
+      ...answers,
+      [questionId]: value
+    });
+  };
+  
+  const goToNextQuestion = () => {
+    if (currentQuestionIndex < exam.questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    }
+  };
+  
+  const goToPrevQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
+  };
+  
+  const handleSubmit = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Calculate score
+    let totalPoints = 0;
+    let earnedPoints = 0;
+    
+    exam.questions.forEach(question => {
+      totalPoints += question.points;
+      
+      if (question.type === 'mcq') {
+        if (answers[question.id] === question.correctAnswer) {
+          earnedPoints += question.points;
+        }
+      } else {
+        // For essay questions, we'll just give half points automatically
+        // In a real app, these would be graded by an instructor
+        earnedPoints += question.points / 2;
+      }
+    });
+    
+    const score = Math.round((earnedPoints / totalPoints) * 100);
+    const passed = score >= exam.passingScore;
+    
+    // Submit result
+    const result = submitExamResult({
+      userId: currentUser.id,
+      examId: exam.id,
+      answers,
+      score,
+      passed,
+      timeSpent: exam.duration * 60 - timeLeft
+    });
+    
+    // Navigate to results page
+    navigate(`/results/${result.id}`);
+  };
+  
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+  
+  if (error) {
+    return (
+      <div className="take-exam-container">
+        <div className="alert alert-danger">{error}</div>
+        <p>Redirecting to exam details...</p>
+      </div>
+    );
+  }
+  
+  if (!examStarted) {
+    return (
+      <div className="take-exam-container">
+        <div className="exam-start-card">
+          <h1>{exam.title}</h1>
+          <div className="exam-info">
+            <p><strong>Duration:</strong> {exam.duration} minutes</p>
+            <p><strong>Questions:</strong> {exam.questions.length}</p>
+            <p><strong>Passing Score:</strong> {exam.passingScore}%</p>
+          </div>
+          
+          <div className="exam-instructions">
+            <h2>Instructions</h2>
+            <ul>
+              <li>You have {exam.duration} minutes to complete this exam.</li>
+              <li>The exam consists of {exam.questions.length} questions.</li>
+              <li>You need to score at least {exam.passingScore}% to pass.</li>
+              <li>Once you start the exam, you cannot pause or restart it.</li>
+              <li>Ensure you have a stable internet connection before starting.</li>
+            </ul>
+          </div>
+          
+          <button 
+            className="btn-primary btn-start-exam"
+            onClick={startExam}
+          >
+            Start Exam
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  const currentQuestion = exam.questions[currentQuestionIndex];
+  
+  return (
+    <div className="take-exam-container">
+      <div className="exam-header">
+        <h1>{exam.title}</h1>
+        <div className="exam-timer">
+          Time Left: <span className={timeLeft < 60 ? 'time-warning' : ''}>{formatTime(timeLeft)}</span>
+        </div>
+      </div>
+      
+      <div className="exam-progress">
+        <div className="progress-bar">
+          <div 
+            className="progress-fill"
+            style={{ width: `${(currentQuestionIndex + 1) / exam.questions.length * 100}%` }}
+          ></div>
+        </div>
+        <div className="progress-text">
+          Question {currentQuestionIndex + 1} of {exam.questions.length}
+        </div>
+      </div>
+      
+      <div className="question-card">
+        <div className="question-header">
+          <span className="question-type">
+            {currentQuestion.type === 'mcq' ? 'Multiple Choice' : 'Essay'}
+          </span>
+          <span className="question-points">
+            {currentQuestion.points} points
+          </span>
+        </div>
+        
+        <div className="question-text">
+          <h2>{currentQuestion.text}</h2>
+        </div>
+        
+        <div className="question-answer">
+          {currentQuestion.type === 'mcq' ? (
+            <div className="mcq-options">
+              {currentQuestion.options.map((option, index) => (
+                <div key={index} className="mcq-option">
+                  <input
+                    type="radio"
+                    id={`option-${index}`}
+                    name={`question-${currentQuestion.id}`}
+                    value={option}
+                    checked={answers[currentQuestion.id] === option}
+                    onChange={() => handleAnswerChange(currentQuestion.id, option)}
+                  />
+                  <label htmlFor={`option-${index}`}>{option}</label>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="essay-answer">
+              <textarea
+                value={answers[currentQuestion.id]}
+                onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+                placeholder="Type your answer here..."
+                rows="8"
+              ></textarea>
+            </div>
+          )}
+        </div>
+        
+        <div className="question-navigation">
+          <button 
+            className="btn-secondary"
+            onClick={goToPrevQuestion}
+            disabled={currentQuestionIndex === 0}
+          >
+            Previous
+          </button>
+          
+          {currentQuestionIndex < exam.questions.length - 1 ? (
+            <button 
+              className="btn-primary"
+              onClick={goToNextQuestion}
+            >
+              Next
+            </button>
+          ) : (
+            <button 
+              className="btn-success"
+              onClick={handleSubmit}
+            >
+              Submit Exam
+            </button>
+          )}
+        </div>
+      </div>
+      
+      <div className="question-navigation-dots">
+        {exam.questions.map((q, index) => (
+          <button
+            key={q.id}
+            className={`nav-dot ${index === currentQuestionIndex ? 'active' : ''} ${answers[q.id] ? 'answered' : ''}`}
+            onClick={() => setCurrentQuestionIndex(index)}
+            title={`Question ${index + 1}`}
+          >
+            {index + 1}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default TakeExam;
